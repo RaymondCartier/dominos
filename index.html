@@ -74,6 +74,8 @@
             flex-shrink: 0;
             cursor: pointer;
             transition: transform 0.1s ease, border-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease;
+            break-inside: avoid;
+            page-break-inside: avoid;
         }
         .domino-card:hover {
             transform: translateY(-2px);
@@ -98,8 +100,8 @@
         @media print {
             body { background: white; padding: 0; }
             h1, .controls { display: none; }
-            #grid { max-width: 100%; gap: 15px; }
-            .domino-card { break-inside: avoid; page-break-inside: avoid; transform: none !important; box-shadow: none !important; }
+            #grid { max-width: 100%; gap: 15px; display: flex; flex-wrap: wrap; }
+            .domino-card { break-inside: avoid !important; page-break-inside: avoid !important; transform: none !important; box-shadow: none !important; }
         }
     </style>
 </head>
@@ -110,7 +112,7 @@
     <div class="controls">
         <div class="control-group">
             <label for="affichage">Affichage :</label>
-            <select id="affichage" onchange="redessinerGrille()">
+            <select id="affichage" onchange="changerAffichage()">
                 <option value="degres" selected>Degrés</option>
                 <option value="notes">Notes</option>
                 <option value="lettres">Lettres</option>
@@ -184,6 +186,7 @@
         <div class="btn-group">
             <button class="btn-audio" onclick="jouerTonique()">Écouter I</button>
             <button class="btn-audio" onclick="jouerArpegeI_III_V()">Écouter I - III - V</button>
+            <button id="btnToggleRythme" class="btn-secondary" style="display: none;" onclick="toggleModeRythme()">⮑ Rythmes</button>
             <button class="btn-primary" onclick="ajouterDomino()">+ Ajouter</button>
             <button class="btn-secondary" onclick="effacerTout()">Réinitialiser</button>
             <button class="btn-secondary" onclick="window.print()">Imprimer</button>
@@ -194,6 +197,8 @@
 
     <script>
         let audioCtx = null;
+        let convolverNode = null;
+        let modeRythmiqueActif = false;
         let activePlayback = {
             card: null,
             oscillators: [],
@@ -210,28 +215,13 @@
             'lydien': [0, 2, 4, 6, 7, 9, 11],
             'mixolydien': [0, 2, 4, 5, 7, 9, 10],
             'locrien': [0, 1, 3, 5, 6, 8, 10],
-            'dorien_b2': [0, 1, 3, 5, 7, 9, 10],
-            'lydien_aug': [0, 2, 4, 6, 8, 9, 11],
-            'lydien_dom': [0, 2, 4, 6, 7, 9, 10],
-            'mixolydien_b6': [0, 2, 4, 5, 7, 8, 10],
-            'locrien_n2': [0, 2, 3, 5, 6, 8, 10],
-            'altere': [0, 1, 3, 4, 6, 8, 10],
             'penta_maj': [0, 2, 4, 7, 9],
             'penta_min': [0, 3, 5, 7, 10],
             'blues_min': [0, 3, 5, 6, 7, 10],
             'blues_maj': [0, 2, 3, 4, 7, 9],
             'par_ton': [0, 2, 4, 6, 8, 10],
             'dim_dt_t': [0, 1, 3, 4, 6, 7, 9, 10],
-            'dim_t_dt': [0, 2, 3, 5, 6, 8, 9, 11],
-            'phrygien_dom': [0, 1, 4, 5, 7, 8, 10],
-            'double_har': [0, 1, 4, 5, 7, 8, 11],
-            'orientale': [0, 1, 4, 5, 6, 8, 11],
-            'hongrois_min': [0, 2, 3, 6, 7, 8, 11],
-            'hirajoshi': [0, 2, 3, 7, 8],
-            'insen': [0, 1, 5, 7, 10],
             'bebop_dom': [0, 2, 4, 5, 7, 9, 10, 11],
-            'bebop_maj': [0, 2, 4, 5, 7, 8, 9, 11],
-            'bebop_min': [0, 2, 3, 5, 7, 8, 9, 10],
             'chromatique': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
         };
 
@@ -259,26 +249,133 @@
             'penta_min': [0, 2, 3, 4, 6],
             'blues_min': [0, 2, 3, 3, 4, 6],
             'blues_maj': [0, 1, 2, 4, 5, 5],
-            'hirajoshi': [0, 1, 2, 4, 5],
-            'insen':     [0, 1, 3, 4, 6],
             'bebop_dom': [0, 1, 2, 3, 4, 5, 5, 6],
-            'bebop_maj': [0, 1, 2, 3, 4, 4, 5, 6],
-            'bebop_min': [0, 1, 2, 3, 4, 5, 5, 6],
             'chromatique': [0,0,1,1,2,2,3,3,4,5,5,6]
+        };
+
+        const PATTERNS_RYTHMIQUES = {
+            'bach': [
+                ['C', 'C', 'C', 'C', 'NP', 'C'],
+                ['NP', 'C', 'N', 'C', 'C'],
+                ['C', 'C', 'NP', 'C', 'B']
+            ],
+            'piazzolla': [
+                ['C', 'C', 'SC', 'C', 'NP', 'C'],
+                ['C', 'SC', 'C', 'C', 'NP', 'C'],
+                ['NP', 'C', 'C', 'SC', 'C', 'N']
+            ],
+            'jazz_standards': [
+                ['SC', 'C', 'NP', 'C', 'C', 'N'],
+                ['C', 'C', 'SC', 'C', 'BP'],
+                ['NP', 'C', 'SC', 'C', 'N']
+            ],
+            'chet_baker': [
+                ['BP', 'N'],
+                ['NP', 'C', 'N', 'B'],
+                ['B', 'C', 'C', 'NP', 'C']
+            ],
+            'boulez': [
+                ['C', 'SC', 'BP', 'C', 'SN', 'N'],
+                ['SN', 'C', 'NP', 'SC', 'C', 'B']
+            ],
+            'coltrane': [
+                ['C', 'C', 'C', 'C', 'C', 'C', 'N'],
+                ['C', 'SC', 'NP', 'C', 'C', 'C']
+            ],
+            'bebop': [
+                ['C', 'C', 'C', 'C', 'C', 'C', 'N'],
+                ['C', 'C', 'SC', 'C', 'NP', 'C']
+            ],
+            'ravel': [
+                ['NP', 'C', 'C', 'C', 'B'],
+                ['C', 'C', 'NP', 'C', 'B'],
+                ['N', 'NP', 'C', 'C', 'N']
+            ],
+            'debussy': [
+                ['BP', 'C', 'C'],
+                ['NP', 'C', 'C', 'C', 'B'],
+                ['C', 'C', 'NP', 'C', 'C', 'C', 'B']
+            ],
+            'solfege': [
+                ['NP', 'C', 'C', 'C', 'N'],
+                ['C', 'C', 'NP', 'C', 'B'],
+                ['N', 'SC', 'C', 'NP', 'C']
+            ],
+            'atonal': [
+                ['C', 'SC', 'NP', 'C', 'B'],
+                ['SC', 'C', 'C', 'NP', 'C']
+            ]
         };
 
         function getRandomInt(min, max) {
             return Math.floor(Math.random() * (max - min + 1)) + min;
         }
 
+        function createReverbBuffer(ctx) {
+            const rate = ctx.sampleRate;
+            const length = rate * 0.8;
+            const decay = 3.5;
+            const impulse = ctx.createBuffer(2, length, rate);
+            const left = impulse.getChannelData(0);
+            const right = impulse.getChannelData(1);
+
+            for (let i = 0; i < length; i++) {
+                const n = length - i;
+                left[i] = (Math.random() * 2 - 1) * Math.pow(n / length, decay);
+                right[i] = (Math.random() * 2 - 1) * Math.pow(n / length, decay);
+            }
+            return impulse;
+        }
+
         function getAudioContext() {
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                convolverNode = audioCtx.createConvolver();
+                convolverNode.buffer = createReverbBuffer(audioCtx);
+
+                const wetGain = audioCtx.createGain();
+                wetGain.gain.value = 0.08;
+
+                convolverNode.connect(wetGain);
+                wetGain.connect(audioCtx.destination);
             }
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
             return audioCtx;
+        }
+
+        function changerAffichage() {
+            const affichage = document.getElementById('affichage').value;
+            const btnToggle = document.getElementById('btnToggleRythme');
+            if (affichage === 'portee') {
+                btnToggle.style.display = 'inline-block';
+            } else {
+                btnToggle.style.display = 'none';
+            }
+            redessinerGrille();
+        }
+
+        function toggleModeRythme() {
+            modeRythmiqueActif = !modeRythmiqueActif;
+            const btnToggle = document.getElementById('btnToggleRythme');
+            btnToggle.textContent = modeRythmiqueActif ? '⮑ Noires' : '⮑ Rythmes';
+            
+            const grid = document.getElementById('grid');
+            const cards = grid.getElementsByClassName('domino-card');
+            const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+
+            Array.from(cards).forEach((card, index) => {
+                if (index >= 2) {
+                    if (modeRythmiqueActif) {
+                        card._rythmes = genererRythmeParStyle(styleVal, card._degres.length);
+                    } else {
+                        card._rythmes = new Array(card._degres.length).fill('N');
+                    }
+                }
+                const canvas = card.querySelector('canvas');
+                dessinerDominoCanvas(canvas, card._degres, card);
+            });
         }
 
         function getCardScale(card) {
@@ -325,21 +422,38 @@
             const palettes = {
                 'solfege': ['maj'],
                 'bach': ['maj', 'min_har', 'min_mel'],
-                'piazzolla': ['min_har', 'min_nat', 'phrygien_dom'],
+                'piazzolla': ['min_har', 'min_nat'],
                 'boulez': ['altere', 'dim_dt_t', 'par_ton'],
                 'jazz_standards': ['dorien', 'lydien', 'mixolydien', 'maj'],
                 'chet_baker': ['dorien', 'penta_min', 'min_nat'],
                 'coltrane': ['penta_maj', 'dim_dt_t', 'lydien', 'bebop_dom'],
                 'ravel': ['dorien', 'lydien', 'mixolydien', 'dim_dt_t', 'penta_maj'],
                 'debussy': ['par_ton', 'penta_maj', 'dorien', 'lydien'],
-                'bebop': ['bebop_dom', 'bebop_maj', 'bebop_min'],
-                'atonal': ['chromatique', 'altere', 'dim_dt_t']
+                'bebop': ['bebop_dom'],
+                'atonal': ['chromatique']
             };
             const palette = palettes[styleVal] || ['maj'];
             if (index === 0 || index === 1) {
                 return palette[0];
             }
             return palette[getRandomInt(0, palette.length - 1)];
+        }
+
+        function genererRythmeParStyle(styleVal, length) {
+            let key = styleVal.startsWith('scale_') ? styleVal.replace('scale_', '') : styleVal;
+            const availableKeys = Object.keys(PATTERNS_RYTHMIQUES);
+            if (!PATTERNS_RYTHMIQUES[key]) {
+                key = availableKeys[getRandomInt(0, availableKeys.length - 1)];
+            }
+
+            const patterns = PATTERNS_RYTHMIQUES[key];
+            const patternChoisi = patterns[getRandomInt(0, patterns.length - 1)];
+            
+            let rythme = [];
+            while (rythme.length < length) {
+                rythme.push(...patternChoisi);
+            }
+            return rythme.slice(0, length);
         }
 
         function toRoman(degre, scaleLen = 7) {
@@ -374,47 +488,55 @@
             const targetPitch  = (root.pitch + scale[scaleIndex]) % 12;
 
             const basePitch = LETTER_PITCHES[targetLetter];
-            const diff = (targetPitch - basePitch + 12) % 12;
+            let diff = (targetPitch - basePitch + 12) % 12;
 
             let accidental = '';
+            let extraStep = 0;
             if (diff === 1) accidental = '♯';
-            else if (diff === 2) accidental = '𝄪';
+            else if (diff === 2) {
+                accidental = '♯';
+                extraStep = 1;
+            }
             else if (diff === 11) accidental = '♭';
-            else if (diff === 10) accidental = '𝄫';
+            else if (diff === 10) {
+                accidental = '♭';
+                extraStep = -1;
+            }
 
             const absoluteOctave = 4 + Math.floor((root.letter + letterStep) / 7) + octaveOffset;
-            const noteDiatonicIndex = (absoluteOctave * 7) + targetLetter;
+            const noteDiatonicIndex = (absoluteOctave * 7) + targetLetter + extraStep;
             const e4DiatonicIndex = (4 * 7) + 2;
             const staffStepFromE4 = noteDiatonicIndex - e4DiatonicIndex;
 
             const letters = anglo ? ANGLO_LETTERS : LETTERS;
+            const finalLetter = (targetLetter + extraStep + 7) % 7;
 
             return {
-                name: letters[targetLetter] + accidental,
+                name: letters[finalLetter] + accidental,
                 accidental: accidental,
                 staffStep: staffStepFromE4
             };
         }
 
-        function playPianoNote(freq, startTime, duration = 1.6) {
+        function playPianoNote(freq, startTime, duration = 1.4) {
             const ctx = getAudioContext();
             const createdOscillators = [];
 
             const masterGain = ctx.createGain();
             masterGain.gain.setValueAtTime(0, startTime);
-            masterGain.gain.linearRampToValueAtTime(0.45, startTime + 0.005);
-            masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+            masterGain.gain.linearRampToValueAtTime(2.5, startTime + 0.015);
+            masterGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(freq * 5, startTime);
-            filter.frequency.exponentialRampToValueAtTime(freq * 1.1, startTime + 0.35);
+            filter.frequency.setValueAtTime(freq * 4.5, startTime);
+            filter.frequency.exponentialRampToValueAtTime(freq * 0.9, startTime + 0.3);
 
             const harmonics = [
-                { mult: 1.0, gain: 0.65, type: 'triangle' },
-                { mult: 2.0, gain: 0.22, type: 'sine' },
-                { mult: 3.0, gain: 0.08, type: 'sine' },
-                { mult: 4.0, gain: 0.03, type: 'sine' }
+                { mult: 1.0, gain: 0.75, type: 'triangle' },
+                { mult: 2.0, gain: 0.25, type: 'sine' },
+                { mult: 3.0, gain: 0.10, type: 'sine' },
+                { mult: 4.0, gain: 0.04, type: 'sine' }
             ];
 
             harmonics.forEach(h => {
@@ -436,6 +558,9 @@
 
             filter.connect(masterGain);
             masterGain.connect(ctx.destination);
+            if (convolverNode) {
+                masterGain.connect(convolverNode);
+            }
 
             return createdOscillators;
         }
@@ -468,7 +593,7 @@
             stopCurrentPlayback();
             const ctx = getAudioContext();
             const freq = getFrequency(1, null);
-            const oscs = playPianoNote(freq, ctx.currentTime + 0.05, 2.0);
+            const oscs = playPianoNote(freq, ctx.currentTime + 0.05, 1.5);
             activePlayback.oscillators.push(...oscs);
         }
 
@@ -476,12 +601,12 @@
             stopCurrentPlayback();
             const ctx = getAudioContext();
             let now = ctx.currentTime + 0.05;
-            const stepDuration = 0.55;
+            const stepDuration = 0.45;
             const degres = [1, 3, 5];
 
             degres.forEach((degre, index) => {
                 const freq = getFrequency(degre, null);
-                const oscs = playPianoNote(freq, now + (index * stepDuration), 1.8);
+                const oscs = playPianoNote(freq, now + (index * stepDuration), 1.4);
                 activePlayback.oscillators.push(...oscs);
             });
         }
@@ -499,17 +624,47 @@
             cardElement.classList.add('playing');
             
             let now = ctx.currentTime + 0.05;
-            const stepDuration = 0.55;
+            const tempoNoire = 0.42;
+            const modeAffichage = document.getElementById('affichage').value;
+            
+            let rythmes = new Array(degres.length).fill('N');
+            if (modeAffichage === 'portee') {
+                if (cardElement._isFirstTwo) {
+                    rythmes = new Array(degres.length).fill('C');
+                } else {
+                    rythmes = modeRythmiqueActif ? (cardElement._rythmes || new Array(degres.length).fill('N')) : new Array(degres.length).fill('N');
+                }
+            }
+
+            let dureeTotale = 0;
 
             degres.forEach((degre, index) => {
-                const freq = getFrequency(degre, cardElement, index, degres);
-                const oscs = playPianoNote(freq, now + (index * stepDuration));
-                if (oscs) {
-                    activePlayback.oscillators.push(...oscs);
+                const typeRythme = rythmes[index] || 'N';
+                let mult = 1.0;
+                let estSilence = false;
+
+                if (typeRythme === 'B') mult = 2.0;
+                else if (typeRythme === 'BP') mult = 3.0;
+                else if (typeRythme === 'NP') mult = 1.5;
+                else if (typeRythme === 'C') mult = 0.5;
+                else if (typeRythme === 'SN') { mult = 1.0; estSilence = true; }
+                else if (typeRythme === 'SC') { mult = 0.5; estSilence = true; }
+
+                const dureeNote = tempoNoire * mult;
+
+                if (!estSilence) {
+                    const freq = getFrequency(degre, cardElement, index, degres);
+                    const oscs = playPianoNote(freq, now, Math.max(dureeNote * 1.8, 1.2));
+                    if (oscs) {
+                        activePlayback.oscillators.push(...oscs);
+                    }
                 }
+
+                now += dureeNote;
+                dureeTotale += dureeNote;
             });
 
-            const totalDurationMs = (degres.length * stepDuration * 1000) + 200;
+            const totalDurationMs = (dureeTotale * 1000) + 300;
             const timeoutId = setTimeout(() => {
                 if (activePlayback.card === cardElement) {
                     stopCurrentPlayback();
@@ -668,12 +823,14 @@
 
         function dessinerDominoCanvas(canvas, degres, card) {
             const modeAffichage = document.getElementById('affichage').value;
+            const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
             const scale = getCardScale(card);
             const scaleLen = scale.length;
             const nNotes = degres.length;
 
             const scaleFactor = 2;
-            const w = (modeAffichage === 'portee') ? 280 : 180;
+            const estPortee = (modeAffichage === 'portee');
+            const w = estPortee ? 280 : 180;
             const h = 230;
 
             canvas.width = w * scaleFactor;
@@ -686,7 +843,7 @@
             ctx.setTransform(scaleFactor, 0, 0, scaleFactor, 0, 0);
             ctx.clearRect(0, 0, w, h);
 
-            if (modeAffichage === 'portee') {
+            if (estPortee) {
                 const staffLineSpacing = 7;
                 const staffTop = h / 2 - (staffLineSpacing * 2) - 10;
                 const startX = 14;
@@ -717,15 +874,142 @@
                 const noteEndX = endX - 16;
                 const noteUsableWidth = noteEndX - noteStartX;
 
-                degres.forEach((degre, i) => {
+                let rythmes = new Array(nNotes).fill('N');
+                if (modeAffichage === 'portee') {
+                    if (card && card._isFirstTwo) {
+                        rythmes = new Array(nNotes).fill('C');
+                    } else {
+                        rythmes = modeRythmiqueActif ? (card._rythmes || new Array(nNotes).fill('N')) : new Array(nNotes).fill('N');
+                    }
+                }
+
+                let currentBeatTime = 0.0;
+                const beatDuration = 1.0; 
+
+                const notesData = degres.map((degre, i) => {
+                    const typeRythme = rythmes[i] || 'N';
+                    let durationVal = 1.0;
+                    if (typeRythme === 'B') durationVal = 2.0;
+                    else if (typeRythme === 'BP') durationVal = 3.0;
+                    else if (typeRythme === 'NP') durationVal = 1.5;
+                    else if (typeRythme === 'C' || typeRythme === 'SC') durationVal = 0.5;
+                    else if (typeRythme === 'SN') durationVal = 1.0;
+
                     const noteInfo = getNoteInfo(degre, card, false, i, degres);
                     const step = noteInfo.staffStep;
-                    
                     const stepX = nNotes > 1 ? noteUsableWidth / (nNotes - 1) : 0;
                     const noteX = noteStartX + (i * stepX);
                     const noteY = bottomLineY - (step * stepHeight);
 
-                    ctx.lineWidth = 1;
+                    const beatIndex = Math.floor(currentBeatTime / beatDuration);
+                    currentBeatTime += durationVal;
+
+                    return { degre, typeRythme, noteInfo, step, noteX, noteY, beatIndex, durationVal };
+                });
+
+                card._notesDataCache = notesData;
+
+                let beamGroups = [];
+                let currentGroup = [];
+                notesData.forEach((nd, idx) => {
+                    if (nd.typeRythme === 'C') {
+                        let halfMeasureGroup = nd.beatIndex < 2 ? 0 : 1; 
+                        
+                        if (currentGroup.length === 0) {
+                            currentGroup.push({ index: idx, half: halfMeasureGroup });
+                        } else {
+                            let lastItem = currentGroup[currentGroup.length - 1];
+                            let firstItem = currentGroup[0];
+                            if (halfMeasureGroup === firstItem.half && currentGroup.length < 4 && idx === lastItem.index + 1) {
+                                currentGroup.push({ index: idx, half: halfMeasureGroup });
+                            } else {
+                                beamGroups.push(currentGroup.map(g => g.index));
+                                currentGroup = [{ index: idx, half: halfMeasureGroup }];
+                            }
+                        }
+                    } else {
+                        if (currentGroup.length > 0) {
+                            beamGroups.push(currentGroup.map(g => g.index));
+                            currentGroup = [];
+                        }
+                    }
+                });
+                if (currentGroup.length > 0) beamGroups.push(currentGroup.map(g => g.index));
+
+                beamGroups.forEach(group => {
+                    if (group.length > 1) {
+                        let avgStep = group.reduce((sum, idx) => sum + notesData[idx].step, 0) / group.length;
+                        let stemUp = avgStep < 4;
+                        
+                        const firstND = notesData[group[0]];
+                        const lastND = notesData[group[group.length - 1]];
+                        const baseStemLen = 26;
+
+                        firstND.stemUp = stemUp;
+                        lastND.stemUp = stemUp;
+                        firstND.stemX = stemUp ? firstND.noteX + 4.5 : firstND.noteX - 4.5;
+                        lastND.stemX = stemUp ? lastND.noteX + 4.5 : lastND.noteX - 4.5;
+                        firstND.stemYEnd = stemUp ? firstND.noteY - baseStemLen : firstND.noteY + baseStemLen;
+                        lastND.stemYEnd = stemUp ? lastND.noteY - baseStemLen : lastND.noteY + baseStemLen;
+
+                        group.forEach(idx => {
+                            const nd = notesData[idx];
+                            nd.stemUp = stemUp;
+                            nd.inBeam = true;
+                            nd.stemX = stemUp ? nd.noteX + 4.5 : nd.noteX - 4.5;
+                            const ratio = (nd.noteX - firstND.noteX) / (lastND.noteX - firstND.noteX || 1);
+                            nd.stemYEnd = firstND.stemYEnd + ratio * (lastND.stemYEnd - firstND.stemYEnd);
+                        });
+                    }
+                });
+
+                notesData.forEach((nd) => {
+                    const { typeRythme, noteInfo, step, noteX, noteY } = nd;
+                    const isDotted = (typeRythme === 'NP' || typeRythme === 'BP');
+                    const isHollow = (typeRythme === 'B' || typeRythme === 'BP');
+
+                    if (typeRythme === 'SN') {
+                        const midY = staffTop + (2 * staffLineSpacing);
+                        ctx.fillStyle = '#1d1d1f';
+                        ctx.strokeStyle = '#1d1d1f';
+                        ctx.lineWidth = 1.3;
+
+                        ctx.beginPath();
+                        ctx.moveTo(noteX + 2, midY - 6);
+                        ctx.bezierCurveTo(noteX - 4, midY - 3, noteX - 3, midY + 1, noteX + 2, midY + 4);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(noteX + 2, midY - 6);
+                        ctx.lineTo(noteX - 3, midY + 6);
+                        ctx.lineWidth = 1.2;
+                        ctx.stroke();
+                        return;
+                    } 
+                    
+                    if (typeRythme === 'SC') {
+                        const midY = staffTop + (2 * staffLineSpacing);
+                        ctx.fillStyle = '#1d1d1f';
+                        ctx.strokeStyle = '#1d1d1f';
+                        ctx.lineWidth = 1.3;
+
+                        ctx.beginPath();
+                        ctx.moveTo(noteX + 2, midY - 6);
+                        ctx.bezierCurveTo(noteX - 4, midY - 3, noteX - 3, midY + 1, noteX + 2, midY + 4);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(noteX + 2, midY - 6);
+                        ctx.lineTo(noteX - 3, midY + 6);
+                        ctx.stroke();
+
+                        ctx.beginPath();
+                        ctx.moveTo(noteX + 2, midY + 4);
+                        ctx.bezierCurveTo(noteX + 6, midY + 6, noteX + 6, midY + 10, noteX + 3, midY + 12);
+                        ctx.stroke();
+                        return;
+                    }
+
                     if (step <= -2) {
                         for (let ls = -2; ls >= step; ls -= 2) {
                             const ledgerY = bottomLineY - (ls * stepHeight);
@@ -749,6 +1033,7 @@
                         ctx.font = '16px "Patrick Hand", cursive, Arial, sans-serif';
                         ctx.textAlign = 'right';
                         ctx.textBaseline = 'middle';
+                        ctx.fillStyle = '#1d1d1f';
                         ctx.fillText(noteInfo.accidental, noteX - 8, noteY);
                     }
 
@@ -757,20 +1042,68 @@
                     ctx.rotate(-0.3);
                     ctx.beginPath();
                     ctx.ellipse(0, 0, 5.2, 3.8, 0, 0, Math.PI * 2);
-                    ctx.fillStyle = '#1d1d1f';
-                    ctx.fill();
+
+                    if (isHollow) {
+                        ctx.strokeStyle = '#1d1d1f';
+                        ctx.lineWidth = 1.8;
+                        ctx.stroke();
+                    } else {
+                        ctx.fillStyle = '#1d1d1f';
+                        ctx.fill();
+                    }
                     ctx.restore();
 
-                    ctx.lineWidth = 1.5;
-                    ctx.beginPath();
-                    if (step < 4) {
-                        ctx.moveTo(noteX + 4.5, noteY);
-                        ctx.lineTo(noteX + 4.5, noteY - 26);
-                    } else {
-                        ctx.moveTo(noteX - 4.5, noteY);
-                        ctx.lineTo(noteX - 4.5, noteY + 26);
+                    if (isDotted) {
+                        let dotY = noteY;
+                        if (step % 2 === 0) dotY -= stepHeight;
+                        ctx.fillStyle = '#1d1d1f';
+                        ctx.beginPath();
+                        ctx.arc(noteX + 9, dotY, 1.8, 0, Math.PI * 2);
+                        ctx.fill();
                     }
+
+                    let stemUp = nd.stemUp !== undefined ? nd.stemUp : (step < 4);
+                    nd.actualStemUp = stemUp;
+                    let stemX = nd.stemX !== undefined ? nd.stemX : (stemUp ? noteX + 4.5 : noteX - 4.5);
+                    let stemYEnd = nd.stemYEnd !== undefined ? nd.stemYEnd : (stemUp ? noteY - 26 : noteY + 26);
+
+                    nd.stemX = stemX;
+                    nd.stemYEnd = stemYEnd;
+
+                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = '#1d1d1f';
+                    ctx.beginPath();
+                    ctx.moveTo(stemX, noteY);
+                    ctx.lineTo(stemX, stemYEnd);
                     ctx.stroke();
+
+                    if (typeRythme === 'C' && !nd.inBeam) {
+                        ctx.lineWidth = 1.6;
+                        ctx.strokeStyle = '#1d1d1f';
+                        ctx.beginPath();
+                        if (stemUp) {
+                            ctx.moveTo(stemX, stemYEnd);
+                            ctx.bezierCurveTo(stemX + 6, stemYEnd + 4, stemX + 9, stemYEnd + 11, stemX + 3, stemYEnd + 16);
+                        } else {
+                            ctx.moveTo(stemX, stemYEnd);
+                            ctx.bezierCurveTo(stemX + 6, stemYEnd - 4, stemX + 9, stemYEnd - 11, stemX + 3, stemYEnd - 16);
+                        }
+                        ctx.stroke();
+                    }
+                });
+
+                beamGroups.forEach(group => {
+                    if (group.length > 1) {
+                        const first = notesData[group[0]];
+                        const last = notesData[group[group.length - 1]];
+
+                        ctx.lineWidth = 3.5;
+                        ctx.strokeStyle = '#1d1d1f';
+                        ctx.beginPath();
+                        ctx.moveTo(first.stemX, first.stemYEnd);
+                        ctx.lineTo(last.stemX, last.stemYEnd);
+                        ctx.stroke();
+                    }
                 });
 
             } else {
@@ -813,15 +1146,22 @@
                 if (numSpan) {
                     numSpan.textContent = index + 1;
                 }
+                card._isFirstTwo = (index < 2);
+                const canvas = card.querySelector('canvas');
+                if (canvas) {
+                    dessinerDominoCanvas(canvas, card._degres, card);
+                }
             });
         }
 
-        function creerDominoElement(degres, index, scaleKey) {
+        function creerDominoElement(degres, index, scaleKey, rythmes) {
             const card = document.createElement('div');
             card.className = 'domino-card';
-            card.title = 'Cliquer pour écouter\nDouble-clic sur le domino pour réinitialiser\nClic droit pour supprimer';
+            card.title = 'Cliquer sur une note pour l\'écouter\nCliquer hors d\'une note pour écouter tout le domino\nDouble-clic pour réinitialiser\nClic droit pour supprimer';
             card._degres = degres;
             card._scaleKey = scaleKey;
+            card._rythmes = rythmes;
+            card._isFirstTwo = (index < 2);
 
             const numSpan = document.createElement('span');
             numSpan.className = 'domino-number';
@@ -843,7 +1183,66 @@
                 }
                 clickTimer = setTimeout(() => {
                     clickTimer = null;
-                    jouerMelodie(card._degres, card);
+                    const rect = canvas.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    
+                    const modeAffichage = document.getElementById('affichage').value;
+                    const scale = getCardScale(card);
+                    const scaleLen = scale.length;
+                    const nNotes = card._degres.length;
+                    
+                    let noteIndexClic = -1;
+                    let estSurSilence = false;
+
+                    if (modeAffichage === 'portee') {
+                        let rythmes = card._isFirstTwo ? new Array(nNotes).fill('C') : (modeRythmiqueActif ? (card._rythmes || new Array(nNotes).fill('N')) : new Array(nNotes).fill('N'));
+                        
+                        if (card._notesDataCache) {
+                            card._notesDataCache.forEach((nd, i) => {
+                                const typeRythme = rythmes[i] || 'N';
+                                const isSilence = (typeRythme === 'SN' || typeRythme === 'SC');
+
+                                if (Math.abs(clickX - nd.noteX) < 16 && Math.abs(clickY - nd.noteY) < 14) {
+                                    if (isSilence) {
+                                        estSurSilence = true;
+                                    } else {
+                                        noteIndexClic = i;
+                                    }
+                                }
+                            });
+                        }
+                    } else {
+                        const w = 180;
+                        const h = 230;
+                        const paddingX = 24;
+                        const paddingTop = 40;
+                        const paddingBottom = 25;
+                        const widthUsable = w - (paddingX * 2);
+                        const heightUsable = h - paddingTop - paddingBottom;
+                        
+                        card._degres.forEach((degre, i) => {
+                            const stepX = widthUsable / Math.max(1, nNotes - 1);
+                            const x = paddingX + (i * stepX);
+                            const y = (h - paddingBottom) - ((degre - 1) * (heightUsable / scaleLen));
+                            
+                            if (Math.abs(clickX - x) < 18 && Math.abs(clickY - y) < 15) {
+                                noteIndexClic = i;
+                            }
+                        });
+                    }
+
+                    if (estSurSilence) {
+                        return;
+                    } else if (noteIndexClic !== -1) {
+                        stopCurrentPlayback();
+                        const ctx = getAudioContext();
+                        const freq = getFrequency(card._degres[noteIndexClic], card, noteIndexClic, card._degres);
+                        const oscs = playPianoNote(freq, ctx.currentTime + 0.05, 1.2);
+                        activePlayback.oscillators.push(...oscs);
+                    } else {
+                        jouerMelodie(card._degres, card);
+                    }
                 }, 250);
             });
 
@@ -866,17 +1265,21 @@
                 const scaleLen = scale.length;
                 const maxDegDisplay = scaleLen + 1;
 
-                let newDegres = genererMelodieParStyle(styleVal, currentIndex, maxDegDisplay, scaleLen);
+                let newDegres = [];
                 if (currentIndex === 0) {
-                    newDegres = [];
                     for (let d = 1; d <= scaleLen + 1; d++) newDegres.push(d);
                 } else if (currentIndex === 1) {
-                    newDegres = [];
                     for (let d = scaleLen + 1; d >= 1; d--) newDegres.push(d);
+                } else {
+                    newDegres = genererMelodieParStyle(styleVal, currentIndex, maxDegDisplay, scaleLen);
                 }
 
                 card._scaleKey = newScaleKey;
                 card._degres = newDegres;
+                card._rythmes = (currentIndex < 2) 
+                    ? new Array(newDegres.length).fill('C') 
+                    : (modeRythmiqueActif ? genererRythmeParStyle(styleVal, newDegres.length) : new Array(newDegres.length).fill('N'));
+                card._isFirstTwo = (currentIndex < 2);
                 dessinerDominoCanvas(canvas, newDegres, card);
             });
 
@@ -905,16 +1308,19 @@
                 const scaleLen = scale.length;
                 const maxDegDisplay = scaleLen + 1;
 
-                let degres = genererMelodieParStyle(styleVal, i, maxDegDisplay, scaleLen);
+                let degres = [];
                 if (i === 0) {
-                    degres = [];
                     for (let d = 1; d <= scaleLen + 1; d++) degres.push(d);
                 } else if (i === 1) {
-                    degres = [];
                     for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
+                } else {
+                    degres = genererMelodieParStyle(styleVal, i, maxDegDisplay, scaleLen);
                 }
 
-                const card = creerDominoElement(degres, i, scaleKey);
+                const rythmes = (i < 2) 
+                    ? new Array(degres.length).fill('C') 
+                    : (modeRythmiqueActif ? genererRythmeParStyle(styleVal, degres.length) : new Array(degres.length).fill('N'));
+                const card = creerDominoElement(degres, i, scaleKey, rythmes);
                 grid.appendChild(card);
             }
         }
@@ -931,8 +1337,19 @@
             const scaleLen = scale.length;
             const maxDegDisplay = scaleLen + 1;
 
-            let degres = genererMelodieParStyle(styleVal, nextIndex, maxDegDisplay, scaleLen);
-            const card = creerDominoElement(degres, nextIndex, scaleKey);
+            let degres = [];
+            if (nextIndex === 0) {
+                for (let d = 1; d <= scaleLen + 1; d++) degres.push(d);
+            } else if (nextIndex === 1) {
+                for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
+            } else {
+                degres = genererMelodieParStyle(styleVal, nextIndex, maxDegDisplay, scaleLen);
+            }
+
+            const rythmes = (nextIndex < 2) 
+                ? new Array(degres.length).fill('C') 
+                : (modeRythmiqueActif ? genererRythmeParStyle(styleVal, nextIndex, scaleLen) : new Array(degres.length).fill('N'));
+            const card = creerDominoElement(degres, nextIndex, scaleKey, rythmes);
             grid.appendChild(card);
         }
 
@@ -949,6 +1366,7 @@
             Array.from(cards).forEach((card, index) => {
                 const scaleKey = assignScaleForDomino(styleVal, index);
                 card._scaleKey = scaleKey;
+                card._isFirstTwo = (index < 2);
                 const canvas = card.querySelector('canvas');
                 dessinerDominoCanvas(canvas, card._degres, card);
             });
@@ -978,6 +1396,10 @@
                 }
                 card._scaleKey = scaleKey;
                 card._degres = degres;
+                card._rythmes = (index < 2) 
+                    ? new Array(degres.length).fill('C') 
+                    : (modeRythmiqueActif ? genererRythmeParStyle(styleVal, degres.length) : new Array(degres.length).fill('N'));
+                card._isFirstTwo = (index < 2);
                 const canvas = card.querySelector('canvas');
                 dessinerDominoCanvas(canvas, degres, card);
             });
@@ -1018,6 +1440,16 @@
             const targetRow = rows.find(r => clickY >= r.top && clickY <= r.bottom);
             if (targetRow) {
                 targetRow.cards.sort((a, b) => a.left - b.left);
+                
+                let inInterstice = false;
+                for (let i = 0; i < targetRow.cards.length - 1; i++) {
+                    if (clickX > targetRow.cards[i].right && clickX < targetRow.cards[i+1].left) {
+                        inInterstice = true;
+                        break;
+                    }
+                }
+                if (inInterstice) return;
+
                 const lastCardInRow = targetRow.cards[targetRow.cards.length - 1];
                 if (clickX > lastCardInRow.right) {
                     ajouterDomino();
