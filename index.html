@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de Dominos à Chanter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
+            padding: 30px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 20px; }
+        .controls {
+            background: #ffffff;
+            border: 1px solid #d2d2d7;
+            border-radius: 8px;
+            padding: 16px 24px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+        .control-group { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+        select {
+            padding: 6px 10px;
+            font-size: 14px;
+            border: 1px solid #c6c6c8;
+            border-radius: 6px;
+            outline: none;
+            background: #fff;
+        }
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        button {
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 6px;
+            border: none;
+            transition: all 0.15s ease;
+        }
+        .btn-primary { background-color: #000000; color: #ffffff; }
+        .btn-primary:hover { background-color: #333333; }
+        .btn-secondary { background-color: #e5e5ea; color: #1d1d1f; }
+        .btn-secondary:hover { background-color: #d1d1d6; }
+        .btn-audio { background-color: #0071e3; color: #ffffff; }
+        .btn-audio:hover { background-color: #005bb5; }
+        #grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: flex-start;
+            max-width: 1400px;
+            width: 100%;
+            min-height: 250px;
+        }
+        .domino-card {
+            background: #ffffff;
+            border: 2px solid #000000;
+            width: 180px;
+            height: 230px;
+            position: relative;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: transform 0.1s ease, border-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease;
+        }
+        .domino-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .domino-card.playing {
+            border-color: #2b5c8f;
+            box-shadow: 0 0 0 3px rgba(43, 92, 143, 0.3);
+        }
+        .domino-number {
+            position: absolute;
+            top: 8px;
+            left: 18px;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: Arial, sans-serif;
+            color: #8e8e93;
+            line-height: 1;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        @media print {
+            body { background: white; padding: 0; }
+            h1, .controls { display: none; }
+            #grid { max-width: 100%; gap: 15px; }
+            .domino-card { break-inside: avoid; page-break-inside: avoid; transform: none !important; box-shadow: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Générateur de Dominos à Chanter</h1>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="affichage">Affichage :</label>
+            <select id="affichage" onchange="redessinerGrille()">
+                <option value="degres" selected>Degrés</option>
+                <option value="notes">Notes</option>
+                <option value="lettres">Lettres</option>
+                <option value="portee">Portée</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="styleGamme">Mode / Style :</label>
+            <select id="styleGamme" onchange="rafraichirGrille()">
+                <optgroup label="--- Gammes et Modes pures ---">
+                    <option value="scale_maj" selected>Gamme Majeure (Ionien)</option>
+                    <option value="scale_min_nat">Mineure naturelle (Éolien)</option>
+                    <option value="scale_min_har">Mineure harmonique</option>
+                    <option value="scale_min_mel">Mineure mélodique</option>
+                    <option value="scale_dorien">Dorien</option>
+                    <option value="scale_phrygien">Phrygien</option>
+                    <option value="scale_lydien">Lydien</option>
+                    <option value="scale_mixolydien">Mixolydien</option>
+                    <option value="scale_locrien">Locrien</option>
+                    <option value="scale_penta_maj">Pentatonique majeure</option>
+                    <option value="scale_penta_min">Pentatonique mineure</option>
+                    <option value="scale_blues_min">Blues mineure</option>
+                    <option value="scale_par_ton">Gamme par ton</option>
+                    <option value="scale_dim_dt_t">Diminuée (Demi-ton / Ton)</option>
+                    <option value="scale_bebop_dom">Bebop Dominant</option>
+                </optgroup>
+                <optgroup label="--- Styles musicaux ---">
+                    <option value="solfege">Solfège (Idiomatique)</option>
+                    <option value="bach">Bach (Baroque & Contrepoint)</option>
+                    <option value="piazzolla">Piazzolla (Tango)</option>
+                    <option value="boulez">Boulez (Avant-garde / Sériel)</option>
+                    <option value="jazz_standards">Jazz Standards (Dorien, Lydien, Mixolydian)</option>
+                    <option value="chet_baker">Chet Baker (Cool Jazz)</option>
+                    <option value="coltrane">Coltrane (Modal & Extensions)</option>
+                    <option value="ravel">Ravel (Modale, Octatonique, Pentatonique)</option>
+                    <option value="debussy">Debussy (Par ton, Pentatonique, Modes)</option>
+                    <option value="bebop">Bebop (Gammes Bebop chromatisées)</option>
+                    <option value="atonal">Atonal (Chromatique & Sérialisme libre)</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="transposition">Tonalité :</label>
+            <select id="transposition" onchange="redessinerGrille()">
+                <option value="0">Ut (C)</option>
+                <option value="-2" selected>Si♭ (B♭)</option>
+                <option value="3">Mi♭ (E♭)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label for="tonique">Tonique (I) :</label>
+            <select id="tonique" onchange="redessinerGrille()">
+                <option value="0" selected>Do</option>
+                <option value="1">Do♯ / Ré♭</option>
+                <option value="2">Ré</option>
+                <option value="3">Mi♭ / Ré♯</option>
+                <option value="4">Mi</option>
+                <option value="5">Fa</option>
+                <option value="6">Fa♯ / Sol♭</option>
+                <option value="7">Sol</option>
+                <option value="8">La♭ / Sol♯</option>
+                <option value="9">La</option>
+                <option value="10">Si♭ / La♯</option>
+                <option value="11">Si</option>
+            </select>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-audio" onclick="jouerTonique()">Écouter I</button>
+            <button class="btn-audio" onclick="jouerArpegeI_III_V()">Écouter I - III - V</button>
+            <button class="btn-primary" onclick="ajouterDomino()">+ Ajouter</button>
+            <button class="btn-secondary" onclick="effacerTout()">Réinitialiser</button>
+            <button class="btn-secondary" onclick="window.print()">Imprimer</button>
+        </div>
+    </div>
+
+    <div id="grid"></div>
+
+    <script>
+        let audioCtx = null;
+        let activePlayback = {
+            card: null,
+            oscillators: [],
+            timeouts: []
+        };
+
+        const GAMMES = {
+            'maj': [0, 2, 4, 5, 7, 9, 11],
+            'min_nat': [0, 2, 3, 5, 7, 8, 10],
+            'min_har': [0, 2, 3, 5, 7, 8, 11],
+            'min_mel': [0, 2, 3, 5, 7, 9, 11],
+            'dorien': [0, 2, 3, 5, 7, 9, 10],
+            'phrygien': [0, 1, 3, 5, 7, 8, 10],
+            'lydien': [0, 2, 4, 6, 7, 9, 11],
+            'mixolydien': [0, 2, 4, 5, 7, 9, 10],
+            'locrien': [0, 1, 3, 5, 6, 8, 10],
+            'dorien_b2': [0, 1, 3, 5, 7, 9, 10],
+            'lydien_aug': [0, 2, 4, 6, 8, 9, 11],
+            'lydien_dom': [0, 2, 4, 6, 7, 9, 10],
+            'mixolydien_b6': [0, 2, 4, 5, 7, 8, 10],
+            'locrien_n2': [0, 2, 3, 5, 6, 8, 10],
+            'altere': [0, 1, 3, 4, 6, 8, 10],
+            'penta_maj': [0, 2, 4, 7, 9],
+            'penta_min': [0, 3, 5, 7, 10],
+            'blues_min': [0, 3, 5, 6, 7, 10],
+            'blues_maj': [0, 2, 3, 4, 7, 9],
+            'par_ton': [0, 2, 4, 6, 8, 10],
+            'dim_dt_t': [0, 1, 3, 4, 6, 7, 9, 10],
+            'dim_t_dt': [0, 2, 3, 5, 6, 8, 9, 11],
+            'phrygien_dom': [0, 1, 4, 5, 7, 8, 10],
+            'double_har': [0, 1, 4, 5, 7, 8, 11],
+            'orientale': [0, 1, 4, 5, 6, 8, 11],
+            'hongrois_min': [0, 2, 3, 6, 7, 8, 11],
+            'hirajoshi': [0, 2, 3, 7, 8],
+            'insen': [0, 1, 5, 7, 10],
+            'bebop_dom': [0, 2, 4, 5, 7, 9, 10, 11],
+            'bebop_maj': [0, 2, 4, 5, 7, 8, 9, 11],
+            'bebop_min': [0, 2, 3, 5, 7, 8, 9, 10],
+            'chromatique': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        };
+
+        const LETTERS = ['Do', 'Ré', 'Mi', 'Fa', 'Sol', 'La', 'Si'];
+        const ANGLO_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+        const LETTER_PITCHES = [0, 2, 4, 5, 7, 9, 11];
+
+        const TONIC_ROOTS = [
+            { letter: 0, pitch: 0 },
+            { letter: 0, pitch: 1 },
+            { letter: 1, pitch: 2 },
+            { letter: 2, pitch: 3 },
+            { letter: 2, pitch: 4 },
+            { letter: 3, pitch: 5 },
+            { letter: 3, pitch: 6 },
+            { letter: 4, pitch: 7 },
+            { letter: 5, pitch: 8 },
+            { letter: 5, pitch: 9 },
+            { letter: 6, pitch: 10 },
+            { letter: 6, pitch: 11 }
+        ];
+
+        const SCALE_DIATONIC_STEPS = {
+            'penta_maj': [0, 1, 2, 4, 5],
+            'penta_min': [0, 2, 3, 4, 6],
+            'blues_min': [0, 2, 3, 3, 4, 6],
+            'blues_maj': [0, 1, 2, 4, 5, 5],
+            'hirajoshi': [0, 1, 2, 4, 5],
+            'insen':     [0, 1, 3, 4, 6],
+            'bebop_dom': [0, 1, 2, 3, 4, 5, 5, 6],
+            'bebop_maj': [0, 1, 2, 3, 4, 4, 5, 6],
+            'bebop_min': [0, 1, 2, 3, 4, 5, 5, 6],
+            'chromatique': [0,0,1,1,2,2,3,3,4,5,5,6]
+        };
+
+        function getRandomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        function getCardScale(card) {
+            if (card && card._scaleKey) {
+                return GAMMES[card._scaleKey] || GAMMES['maj'];
+            }
+            const val = document.getElementById('styleGamme').value;
+            if (val.startsWith('scale_')) {
+                return GAMMES[val.replace('scale_', '')] || GAMMES['maj'];
+            }
+            return GAMMES['maj'];
+        }
+
+        function getCardScaleKey(card) {
+            if (card && card._scaleKey) return card._scaleKey;
+            const val = document.getElementById('styleGamme').value;
+            if (val.startsWith('scale_')) return val.replace('scale_', '');
+            return 'maj';
+        }
+
+        function getNoteScale(card, degres, index) {
+            const scaleKey = getCardScaleKey(card);
+            if (scaleKey === 'min_mel') {
+                if (index === 0) {
+                    return GAMMES['min_mel'];
+                }
+                if (degres[index] >= degres[index - 1]) {
+                    return GAMMES['min_mel'];
+                } else {
+                    return GAMMES['min_nat'];
+                }
+            }
+            return GAMMES[scaleKey] || GAMMES['maj'];
+        }
+
+        function assignScaleForDomino(styleVal, index) {
+            if (styleVal.startsWith('scale_')) {
+                let key = styleVal.replace('scale_', '');
+                if (index === 1 && key === 'min_mel') {
+                    return 'min_nat';
+                }
+                return key;
+            }
+            const palettes = {
+                'solfege': ['maj'],
+                'bach': ['maj', 'min_har', 'min_mel'],
+                'piazzolla': ['min_har', 'min_nat', 'phrygien_dom'],
+                'boulez': ['altere', 'dim_dt_t', 'par_ton'],
+                'jazz_standards': ['dorien', 'lydien', 'mixolydien', 'maj'],
+                'chet_baker': ['dorien', 'penta_min', 'min_nat'],
+                'coltrane': ['penta_maj', 'dim_dt_t', 'lydien', 'bebop_dom'],
+                'ravel': ['dorien', 'lydien', 'mixolydien', 'dim_dt_t', 'penta_maj'],
+                'debussy': ['par_ton', 'penta_maj', 'dorien', 'lydien'],
+                'bebop': ['bebop_dom', 'bebop_maj', 'bebop_min'],
+                'atonal': ['chromatique', 'altere', 'dim_dt_t']
+            };
+            const palette = palettes[styleVal] || ['maj'];
+            if (index === 0 || index === 1) {
+                return palette[0];
+            }
+            return palette[getRandomInt(0, palette.length - 1)];
+        }
+
+        function toRoman(degre, scaleLen = 7) {
+            const scaleDegre = ((degre - 1) % scaleLen) + 1;
+            const map = [[10, 'X'], [9, 'IX'], [8, 'VIII'], [7, 'VII'], [6, 'VI'], [5, 'V'], [4, 'IV'], [3, 'III'], [2, 'II'], [1, 'I']];
+            let res = '';
+            let n = scaleDegre;
+            for (let [val, str] of map) {
+                while (n >= val) {
+                    res += str;
+                    n -= val;
+                }
+            }
+            return res;
+        }
+
+        function getNoteInfo(degre, card, anglo = false, index = 0, degres = []) {
+            const scale = (degres && degres.length > 0) ? getNoteScale(card, degres, index) : getCardScale(card);
+            const scaleKey = getCardScaleKey(card);
+            const tonicIndex = parseInt(document.getElementById('tonique').value) || 0;
+            const root = TONIC_ROOTS[tonicIndex] || { letter: 0, pitch: 0 };
+
+            const scaleIndex = (degre - 1) % scale.length;
+            const octaveOffset = Math.floor((degre - 1) / scale.length);
+            
+            let letterStep = scaleIndex;
+            if (SCALE_DIATONIC_STEPS[scaleKey]) {
+                letterStep = SCALE_DIATONIC_STEPS[scaleKey][scaleIndex % SCALE_DIATONIC_STEPS[scaleKey].length];
+            }
+
+            const targetLetter = (root.letter + letterStep) % 7;
+            const targetPitch  = (root.pitch + scale[scaleIndex]) % 12;
+
+            const basePitch = LETTER_PITCHES[targetLetter];
+            const diff = (targetPitch - basePitch + 12) % 12;
+
+            let accidental = '';
+            if (diff === 1) accidental = '♯';
+            else if (diff === 2) accidental = '𝄪';
+            else if (diff === 11) accidental = '♭';
+            else if (diff === 10) accidental = '𝄫';
+
+            const absoluteOctave = 4 + Math.floor((root.letter + letterStep) / 7) + octaveOffset;
+            const noteDiatonicIndex = (absoluteOctave * 7) + targetLetter;
+            const e4DiatonicIndex = (4 * 7) + 2;
+            const staffStepFromE4 = noteDiatonicIndex - e4DiatonicIndex;
+
+            const letters = anglo ? ANGLO_LETTERS : LETTERS;
+
+            return {
+                name: letters[targetLetter] + accidental,
+                accidental: accidental,
+                staffStep: staffStepFromE4
+            };
+        }
+
+        function playPianoNote(freq, startTime, duration = 1.6) {
+            const ctx = getAudioContext();
+            const createdOscillators = [];
+
+            const masterGain = ctx.createGain();
+            masterGain.gain.setValueAtTime(0, startTime);
+            masterGain.gain.linearRampToValueAtTime(0.45, startTime + 0.005);
+            masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+            const filter = ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(freq * 5, startTime);
+            filter.frequency.exponentialRampToValueAtTime(freq * 1.1, startTime + 0.35);
+
+            const harmonics = [
+                { mult: 1.0, gain: 0.65, type: 'triangle' },
+                { mult: 2.0, gain: 0.22, type: 'sine' },
+                { mult: 3.0, gain: 0.08, type: 'sine' },
+                { mult: 4.0, gain: 0.03, type: 'sine' }
+            ];
+
+            harmonics.forEach(h => {
+                const osc = ctx.createOscillator();
+                const hGain = ctx.createGain();
+
+                osc.type = h.type;
+                osc.frequency.setValueAtTime(freq * h.mult, startTime);
+                hGain.gain.value = h.gain;
+
+                osc.connect(hGain);
+                hGain.connect(filter);
+
+                osc.start(startTime);
+                osc.stop(startTime + duration);
+
+                createdOscillators.push(osc);
+            });
+
+            filter.connect(masterGain);
+            masterGain.connect(ctx.destination);
+
+            return createdOscillators;
+        }
+
+        function getFrequency(degre, card, index = 0, degres = []) {
+            const tonicOffset = parseInt(document.getElementById('tonique').value) || 0;
+            const transOffset = parseInt(document.getElementById('transposition').value) || 0;
+            const scale = (degres && degres.length > 0) ? getNoteScale(card, degres, index) : getCardScale(card);
+
+            const octave = Math.floor((degre - 1) / scale.length);
+            const scaleIndex = (degre - 1) % scale.length;
+            const semitone = tonicOffset + transOffset + scale[scaleIndex] + (octave * 12);
+
+            const rootFreq = 261.63;
+            return rootFreq * Math.pow(2, semitone / 12);
+        }
+
+        function stopCurrentPlayback() {
+            if (activePlayback.card) {
+                activePlayback.card.classList.remove('playing');
+            }
+            activePlayback.oscillators.forEach(osc => {
+                try { osc.stop(); } catch (e) {}
+            });
+            activePlayback.timeouts.forEach(t => clearTimeout(t));
+            activePlayback = { card: null, oscillators: [], timeouts: [] };
+        }
+
+        function jouerTonique() {
+            stopCurrentPlayback();
+            const ctx = getAudioContext();
+            const freq = getFrequency(1, null);
+            const oscs = playPianoNote(freq, ctx.currentTime + 0.05, 2.0);
+            activePlayback.oscillators.push(...oscs);
+        }
+
+        function jouerArpegeI_III_V() {
+            stopCurrentPlayback();
+            const ctx = getAudioContext();
+            let now = ctx.currentTime + 0.05;
+            const stepDuration = 0.55;
+            const degres = [1, 3, 5];
+
+            degres.forEach((degre, index) => {
+                const freq = getFrequency(degre, null);
+                const oscs = playPianoNote(freq, now + (index * stepDuration), 1.8);
+                activePlayback.oscillators.push(...oscs);
+            });
+        }
+
+        function jouerMelodie(degres, cardElement) {
+            if (activePlayback.card === cardElement) {
+                stopCurrentPlayback();
+                return;
+            }
+
+            stopCurrentPlayback();
+
+            const ctx = getAudioContext();
+            activePlayback.card = cardElement;
+            cardElement.classList.add('playing');
+            
+            let now = ctx.currentTime + 0.05;
+            const stepDuration = 0.55;
+
+            degres.forEach((degre, index) => {
+                const freq = getFrequency(degre, cardElement, index, degres);
+                const oscs = playPianoNote(freq, now + (index * stepDuration));
+                if (oscs) {
+                    activePlayback.oscillators.push(...oscs);
+                }
+            });
+
+            const totalDurationMs = (degres.length * stepDuration * 1000) + 200;
+            const timeoutId = setTimeout(() => {
+                if (activePlayback.card === cardElement) {
+                    stopCurrentPlayback();
+                }
+            }, totalDurationMs);
+
+            activePlayback.timeouts.push(timeoutId);
+        }
+
+        function genererMelodieParStyle(styleVal, indexDomino, maxDegre, scaleLen) {
+            let degres = [];
+            let longueur = getRandomInt(4, 7);
+
+            if (indexDomino === 0) {
+                for (let d = 1; d <= scaleLen + 1; d++) degres.push(d);
+                return degres;
+            }
+            if (indexDomino === 1) {
+                for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
+                return degres;
+            }
+
+            let styleCheck = styleVal.startsWith('scale_') ? 'solfege' : styleVal;
+
+            switch(styleCheck) {
+                case 'bach':
+                    {
+                        let current = getRandomInt(1, Math.min(5, maxDegre));
+                        degres.push(current);
+                        for (let i = 1; i < longueur; i++) {
+                            const step = (Math.random() < 0.6) ? (Math.random() < 0.5 ? 1 : -1) : (Math.random() < 0.5 ? 2 : -2);
+                            current += step;
+                            if (current < 1) current = 1;
+                            if (current > maxDegre) current = maxDegre;
+                            degres.push(current);
+                        }
+                    }
+                    break;
+                case 'piazzolla':
+                    {
+                        const motifs = [
+                            [1, 5, 4, 3, 2, 1],
+                            [1, 3, 5, scaleLen, scaleLen > 1 ? scaleLen - 1 : 1, 5],
+                            [5, 4, 3, 2, 1, 3, 5],
+                            [1, 2, 4, 3, 5, 4]
+                        ];
+                        let pattern = motifs[getRandomInt(0, motifs.length - 1)];
+                        while(degres.length < longueur) {
+                            degres.push(pattern[degres.length % pattern.length]);
+                        }
+                        degres = degres.slice(0, longueur).map(d => Math.min(d, maxDegre));
+                    }
+                    break;
+                case 'boulez':
+                case 'atonal':
+                    {
+                        for (let i = 0; i < longueur; i++) {
+                            degres.push(getRandomInt(1, maxDegre));
+                        }
+                    }
+                    break;
+                case 'jazz_standards':
+                    {
+                        const jazzMotifs = [
+                            [2, 5, 1, 3],
+                            [1, 3, 5, 6, 5, 3],
+                            [3, 5, 7, 6, 5],
+                            [5, 3, 2, 1, 3]
+                        ];
+                        let pattern = jazzMotifs[getRandomInt(0, jazzMotifs.length - 1)];
+                        while(degres.length < longueur) {
+                            degres.push(pattern[degres.length % pattern.length]);
+                        }
+                        degres = degres.slice(0, longueur).map(d => Math.min(d, maxDegre));
+                    }
+                    break;
+                case 'chet_baker':
+                    {
+                        const coolMotifs = [
+                            [5, 4, 3, 1],
+                            [1, 2, 3, 2, 1],
+                            [3, 2, 1, 5, 3],
+                            [1, 3, 2, 1]
+                        ];
+                        let pattern = coolMotifs[getRandomInt(0, coolMotifs.length - 1)];
+                        while(degres.length < longueur) {
+                            degres.push(pattern[degres.length % pattern.length]);
+                        }
+                        degres = degres.slice(0, longueur).map(d => Math.min(d, maxDegre));
+                    }
+                    break;
+                case 'coltrane':
+                case 'bebop':
+                    {
+                        const coltraneMotifs = [
+                            [1, 3, 5, 7, 8, 7, 5, 3],
+                            [1, 4, 6, 8, 6, 4, 1],
+                            [3, 5, 7, 8, 5, 3, 1]
+                        ];
+                        let pattern = coltraneMotifs[getRandomInt(0, coltraneMotifs.length - 1)];
+                        while(degres.length < longueur) {
+                            degres.push(pattern[degres.length % pattern.length]);
+                        }
+                        degres = degres.slice(0, longueur).map(d => Math.min(d, maxDegre));
+                    }
+                    break;
+                case 'ravel':
+                case 'debussy':
+                    {
+                        const impressionistMotifs = [
+                            [1, 2, 4, 5, 7, 5, 4, 2],
+                            [3, 4, 6, 7, 6, 4, 3],
+                            [1, 3, 4, 6, 5, 3, 1]
+                        ];
+                        let pattern = impressionistMotifs[getRandomInt(0, impressionistMotifs.length - 1)];
+                        while(degres.length < longueur) {
+                            degres.push(pattern[degres.length % pattern.length]);
+                        }
+                        degres = degres.slice(0, longueur).map(d => Math.min(d, maxDegre));
+                    }
+                    break;
+                case 'solfege':
+                default:
+                    {
+                        const modelesIdiomatiques = [
+                            [0, 2, 4, 2, 0],
+                            [0, 1, 0, -1, 0],
+                            [0, 1, 2, 1, 2, 3, 4],
+                            [0, 2, 3, 4, 2, 4],
+                            [4, 3, 2, 1, 0],
+                            [0, 1, 2, 4, 3, 2, 0]
+                        ];
+                        let patronBrut = [...modelesIdiomatiques[Math.floor(Math.random() * modelesIdiomatiques.length)]];
+                        let notesRelatives = [];
+                        let indexModele = 0;
+                        while (notesRelatives.length < longueur) {
+                            notesRelatives.push(patronBrut[indexModele % patronBrut.length]);
+                            indexModele++;
+                        }
+                        notesRelatives = notesRelatives.slice(0, longueur);
+                        const depart = [1, 3, Math.min(5, scaleLen)][Math.floor(Math.random() * 3)];
+                        degres = notesRelatives.map(rel => {
+                            let d = depart + rel;
+                            if (d < 1) d = 1;
+                            if (d > maxDegre) d = maxDegre;
+                            return d;
+                        });
+                        if (longueur >= 3) {
+                            degres[longueur - 1] = (Math.random() < 0.7) ? 1 : Math.min(5, scaleLen);
+                        }
+                    }
+                    break;
+            }
+            return degres;
+        }
+
+        function dessinerDominoCanvas(canvas, degres, card) {
+            const modeAffichage = document.getElementById('affichage').value;
+            const scale = getCardScale(card);
+            const scaleLen = scale.length;
+            const nNotes = degres.length;
+
+            const scaleFactor = 2;
+            const w = (modeAffichage === 'portee') ? 280 : 180;
+            const h = 230;
+
+            canvas.width = w * scaleFactor;
+            canvas.height = h * scaleFactor;
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            canvas.parentElement.style.width = w + 'px';
+
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(scaleFactor, 0, 0, scaleFactor, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            if (modeAffichage === 'portee') {
+                const staffLineSpacing = 7;
+                const staffTop = h / 2 - (staffLineSpacing * 2) - 10;
+                const startX = 14;
+                const endX = w - 14;
+
+                ctx.strokeStyle = '#1d1d1f';
+                ctx.lineWidth = 1;
+
+                for (let l = 0; l < 5; l++) {
+                    const y = staffTop + (l * staffLineSpacing);
+                    ctx.beginPath();
+                    ctx.moveTo(startX, y);
+                    ctx.lineTo(endX, y);
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.moveTo(startX, staffTop);
+                ctx.lineTo(startX, staffTop + (4 * staffLineSpacing));
+                ctx.moveTo(endX, staffTop);
+                ctx.lineTo(endX, staffTop + (4 * staffLineSpacing));
+                ctx.stroke();
+
+                const stepHeight = staffLineSpacing / 2;
+                const bottomLineY = staffTop + (4 * staffLineSpacing);
+
+                const noteStartX = startX + 26;
+                const noteEndX = endX - 16;
+                const noteUsableWidth = noteEndX - noteStartX;
+
+                degres.forEach((degre, i) => {
+                    const noteInfo = getNoteInfo(degre, card, false, i, degres);
+                    const step = noteInfo.staffStep;
+                    
+                    const stepX = nNotes > 1 ? noteUsableWidth / (nNotes - 1) : 0;
+                    const noteX = noteStartX + (i * stepX);
+                    const noteY = bottomLineY - (step * stepHeight);
+
+                    ctx.lineWidth = 1;
+                    if (step <= -2) {
+                        for (let ls = -2; ls >= step; ls -= 2) {
+                            const ledgerY = bottomLineY - (ls * stepHeight);
+                            ctx.beginPath();
+                            ctx.moveTo(noteX - 8, ledgerY);
+                            ctx.lineTo(noteX + 8, ledgerY);
+                            ctx.stroke();
+                        }
+                    }
+                    if (step >= 10) {
+                        for (let ls = 10; ls <= step; ls += 2) {
+                            const ledgerY = bottomLineY - (ls * stepHeight);
+                            ctx.beginPath();
+                            ctx.moveTo(noteX - 8, ledgerY);
+                            ctx.lineTo(noteX + 8, ledgerY);
+                            ctx.stroke();
+                        }
+                    }
+
+                    if (noteInfo.accidental) {
+                        ctx.font = '16px "Patrick Hand", cursive, Arial, sans-serif';
+                        ctx.textAlign = 'right';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(noteInfo.accidental, noteX - 8, noteY);
+                    }
+
+                    ctx.save();
+                    ctx.translate(noteX, noteY);
+                    ctx.rotate(-0.3);
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, 5.2, 3.8, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = '#1d1d1f';
+                    ctx.fill();
+                    ctx.restore();
+
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    if (step < 4) {
+                        ctx.moveTo(noteX + 4.5, noteY);
+                        ctx.lineTo(noteX + 4.5, noteY - 26);
+                    } else {
+                        ctx.moveTo(noteX - 4.5, noteY);
+                        ctx.lineTo(noteX - 4.5, noteY + 26);
+                    }
+                    ctx.stroke();
+                });
+
+            } else {
+                const paddingX = 24;
+                const paddingTop = 40;
+                const paddingBottom = 25;
+                const widthUsable = w - (paddingX * 2);
+                const heightUsable = h - paddingTop - paddingBottom;
+
+                const fontSize = Math.max(8, Math.min((modeAffichage === 'notes' || modeAffichage === 'lettres') ? 11 : 13, Math.floor(120 / Math.max(nNotes, 5))));
+                ctx.font = `600 ${fontSize}px Arial, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#000000';
+
+                degres.forEach((degre, i) => {
+                    const stepX = widthUsable / Math.max(1, nNotes - 1);
+                    const x = paddingX + (i * stepX);
+                    const y = (h - paddingBottom) - ((degre - 1) * (heightUsable / scaleLen));
+
+                    let texte = '';
+                    if (modeAffichage === 'notes') {
+                        texte = getNoteInfo(degre, card, false, i, degres).name;
+                    } else if (modeAffichage === 'lettres') {
+                        texte = getNoteInfo(degre, card, true, i, degres).name;
+                    } else {
+                        texte = toRoman(degre, scaleLen);
+                    }
+
+                    ctx.fillText(texte, x, y);
+                });
+            }
+        }
+
+        function mettreAJourNumeros() {
+            const grid = document.getElementById('grid');
+            const cards = grid.getElementsByClassName('domino-card');
+            Array.from(cards).forEach((card, index) => {
+                const numSpan = card.querySelector('.domino-number');
+                if (numSpan) {
+                    numSpan.textContent = index + 1;
+                }
+            });
+        }
+
+        function creerDominoElement(degres, index, scaleKey) {
+            const card = document.createElement('div');
+            card.className = 'domino-card';
+            card.title = 'Cliquer pour écouter\nDouble-clic sur le domino pour réinitialiser\nClic droit pour supprimer';
+            card._degres = degres;
+            card._scaleKey = scaleKey;
+
+            const numSpan = document.createElement('span');
+            numSpan.className = 'domino-number';
+            numSpan.textContent = index + 1;
+            card.appendChild(numSpan);
+
+            const canvas = document.createElement('canvas');
+            card.appendChild(canvas);
+
+            dessinerDominoCanvas(canvas, degres, card);
+
+            let clickTimer = null;
+            card.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                    return;
+                }
+                clickTimer = setTimeout(() => {
+                    clickTimer = null;
+                    jouerMelodie(card._degres, card);
+                }, 250);
+            });
+
+            card.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                }
+                if (activePlayback.card === card) {
+                    stopCurrentPlayback();
+                }
+                const grid = document.getElementById('grid');
+                const cards = Array.from(grid.getElementsByClassName('domino-card'));
+                const currentIndex = cards.indexOf(card);
+                const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+
+                const newScaleKey = assignScaleForDomino(styleVal, currentIndex);
+                const scale = GAMMES[newScaleKey] || GAMMES['maj'];
+                const scaleLen = scale.length;
+                const maxDegDisplay = scaleLen + 1;
+
+                let newDegres = genererMelodieParStyle(styleVal, currentIndex, maxDegDisplay, scaleLen);
+                if (currentIndex === 0) {
+                    newDegres = [];
+                    for (let d = 1; d <= scaleLen + 1; d++) newDegres.push(d);
+                } else if (currentIndex === 1) {
+                    newDegres = [];
+                    for (let d = scaleLen + 1; d >= 1; d--) newDegres.push(d);
+                }
+
+                card._scaleKey = newScaleKey;
+                card._degres = newDegres;
+                dessinerDominoCanvas(canvas, newDegres, card);
+            });
+
+            card.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (activePlayback.card === card) {
+                    stopCurrentPlayback();
+                }
+                card.remove();
+                mettreAJourNumeros();
+            });
+
+            return card;
+        }
+
+        function genererSerie(total = 14) {
+            stopCurrentPlayback();
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+
+            for (let i = 0; i < total; i++) {
+                const scaleKey = assignScaleForDomino(styleVal, i);
+                const scale = GAMMES[scaleKey] || GAMMES['maj'];
+                const scaleLen = scale.length;
+                const maxDegDisplay = scaleLen + 1;
+
+                let degres = genererMelodieParStyle(styleVal, i, maxDegDisplay, scaleLen);
+                if (i === 0) {
+                    degres = [];
+                    for (let d = 1; d <= scaleLen + 1; d++) degres.push(d);
+                } else if (i === 1) {
+                    degres = [];
+                    for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
+                }
+
+                const card = creerDominoElement(degres, i, scaleKey);
+                grid.appendChild(card);
+            }
+        }
+
+        function ajouterDomino() {
+            stopCurrentPlayback();
+            const grid = document.getElementById('grid');
+            const cards = grid.getElementsByClassName('domino-card');
+            const nextIndex = cards.length;
+            const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+
+            const scaleKey = assignScaleForDomino(styleVal, nextIndex);
+            const scale = GAMMES[scaleKey] || GAMMES['maj'];
+            const scaleLen = scale.length;
+            const maxDegDisplay = scaleLen + 1;
+
+            let degres = genererMelodieParStyle(styleVal, nextIndex, maxDegDisplay, scaleLen);
+            const card = creerDominoElement(degres, nextIndex, scaleKey);
+            grid.appendChild(card);
+        }
+
+        function effacerTout() {
+            genererSerie(14);
+        }
+
+        function redessinerGrille() {
+            stopCurrentPlayback();
+            const grid = document.getElementById('grid');
+            const cards = grid.getElementsByClassName('domino-card');
+            const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+
+            Array.from(cards).forEach((card, index) => {
+                const scaleKey = assignScaleForDomino(styleVal, index);
+                card._scaleKey = scaleKey;
+                const canvas = card.querySelector('canvas');
+                dessinerDominoCanvas(canvas, card._degres, card);
+            });
+        }
+
+        function rafraichirGrille() {
+            stopCurrentPlayback();
+            const grid = document.getElementById('grid');
+            const cards = grid.getElementsByClassName('domino-card');
+            const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+
+            Array.from(cards).forEach((card, index) => {
+                const scaleKey = assignScaleForDomino(styleVal, index);
+                const scale = GAMMES[scaleKey] || GAMMES['maj'];
+                const scaleLen = scale.length;
+                const maxDegDisplay = scaleLen + 1;
+
+                let degres = card._degres;
+                if (index === 0) {
+                    degres = [];
+                    for (let d = 1; d <= scaleLen + 1; d++) degres.push(d);
+                } else if (index === 1) {
+                    degres = [];
+                    for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
+                } else {
+                    degres = genererMelodieParStyle(styleVal, index, maxDegDisplay, scaleLen);
+                }
+                card._scaleKey = scaleKey;
+                card._degres = degres;
+                const canvas = card.querySelector('canvas');
+                dessinerDominoCanvas(canvas, degres, card);
+            });
+        }
+
+        document.addEventListener('dblclick', (e) => {
+            if (e.target.closest('.domino-card') || e.target.closest('.controls') || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+
+            const grid = document.getElementById('grid');
+            const cards = Array.from(grid.getElementsByClassName('domino-card'));
+            if (cards.length === 0) {
+                ajouterDomino();
+                return;
+            }
+
+            const clickX = e.clientX;
+            const clickY = e.clientY;
+
+            const rows = [];
+            cards.forEach(card => {
+                const rect = card.getBoundingClientRect();
+                let row = rows.find(r => Math.abs(r.top - rect.top) < 15);
+                if (!row) {
+                    row = { top: rect.top, bottom: rect.bottom, cards: [] };
+                    rows.push(row);
+                }
+                row.cards.push(rect);
+            });
+
+            rows.sort((a, b) => a.top - b.top);
+            const lastRow = rows[rows.length - 1];
+
+            if (clickY > lastRow.bottom) {
+                ajouterDomino();
+                return;
+            }
+
+            const targetRow = rows.find(r => clickY >= r.top && clickY <= r.bottom);
+            if (targetRow) {
+                targetRow.cards.sort((a, b) => a.left - b.left);
+                const lastCardInRow = targetRow.cards[targetRow.cards.length - 1];
+                if (clickX > lastCardInRow.right) {
+                    ajouterDomino();
+                }
+            }
+        });
+
+        genererSerie(14);
+    </script>
+
+</body>
+</html>
