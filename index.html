@@ -209,11 +209,33 @@
         let convolverNode = null;
         let modeRythmiqueActif = false;
         let modeApprentissageActif = false;
+        let wakeLock = null;
+
         let activePlayback = {
             card: null,
             oscillators: [],
             timeouts: []
         };
+
+        // Screen Wake Lock API
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator && !wakeLock) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => {
+                        wakeLock = null;
+                    });
+                } catch (err) {
+                    console.warn(`Wake Lock indisponible : ${err.message}`);
+                }
+            }
+        }
+
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
 
         const DOMINOS_APPRENTISSAGE = [
             [1, 2, 3, 4, 5],
@@ -419,6 +441,8 @@
         }
 
         function getAudioContext() {
+            requestWakeLock();
+
             if (!audioCtx) {
                 if ('audioSession' in navigator) {
                     navigator.audioSession.type = 'playback';
@@ -1613,6 +1637,7 @@
         });
 
         genererSerie(14);
+        requestWakeLock();
     </script>
 
 </body>
