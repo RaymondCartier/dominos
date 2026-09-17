@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Générateur de Dominos à Chanter</title>
-    <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAANSU0KGgoAAAAAAANSU0KGgoAAA=">
+    <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAALElEQVQ4jWNgGAWDEv7//89g586d/x8+fPifgZGBgYGBgcf///9nAAAXKQu9w5L71AAAAABJRU5ErkJggg==">
     <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -147,6 +147,7 @@
                     <option value="scale_par_ton">Gamme par ton</option>
                     <option value="scale_dim_dt_t">Diminuée (Demi-ton / Ton)</option>
                     <option value="scale_bebop_dom">Bebop Dominant</option>
+                    <option value="scale_chromatique">Chromatique</option>
                 </optgroup>
                 <optgroup label="--- Styles musicaux ---">
                     <option value="solfege">Solfège (Idiomatique)</option>
@@ -390,6 +391,10 @@
             return Math.floor(Math.random() * (max - min + 1)) + min;
         }
 
+        function getVisualSignature(scaleKey, degres, rythmes, affichageMode) {
+            return `${scaleKey}|${affichageMode}|${degres.join(',')}|${rythmes.join(',')}`;
+        }
+
         function mefifierAjusterEighthsStrict(rythmes, degres) {
             let n = Math.min(rythmes.length, degres.length);
             let totalEighths = 0;
@@ -437,8 +442,8 @@
 
         function createReverbBuffer(ctx) {
             const rate = ctx.sampleRate;
-            const length = rate * 0.8;
-            const decay = 3.5;
+            const length = rate * 1.5;
+            const decay = 2.0;
             const impulse = ctx.createBuffer(2, length, rate);
             const left = impulse.getChannelData(0);
             const right = impulse.getChannelData(1);
@@ -463,7 +468,7 @@
                 convolverNode.buffer = createReverbBuffer(audioCtx);
 
                 const wetGain = audioCtx.createGain();
-                wetGain.gain.value = 0.08;
+                wetGain.gain.value = 0.22;
 
                 convolverNode.connect(wetGain);
                 wetGain.connect(audioCtx.destination);
@@ -498,21 +503,46 @@
 
             const grid = document.getElementById('grid');
             const cards = grid.getElementsByClassName('domino-card');
+            const affichageMode = document.getElementById('affichage').value;
+            let existingVisualSignatures = new Set();
 
             Array.from(cards).forEach((card, index) => {
                 if (!card._isFirstTwo) {
-                    if (modeRythmiqueActif) {
-                        const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
-                        const scaleKey = getCardScaleKey(card);
-                        const scale = GAMMES[scaleKey] || GAMMES['maj'];
-                        const scaleLen = scale.length;
+                    const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+                    const scaleKey = getCardScaleKey(card);
+                    const scale = GAMMES[scaleKey] || GAMMES['maj'];
+                    const scaleLen = scale.length;
+                    const maxDegDisplay = scaleLen + 1;
 
-                        const motifRythmique = RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)];
-                        let tempDegres = genererMelodieParStyle(styleVal, index, scaleLen + 1, scaleLen, motifRythmique.length);
-                        let ajust = mefifierAjusterEighthsStrict(motifRythmique, tempDegres);
-                        card._rythmes = ajust.rythmes;
-                        card._degres = ajust.degres;
-                    } else {
+                    let motifRythmique = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : new Array(4).fill('N');
+                    let tempDegres, ajust;
+                    let vSig = '';
+                    let attempts = 0;
+
+                    do {
+                        tempDegres = genererMelodieParStyle(styleVal, index, maxDegDisplay, scaleLen, motifRythmique.length);
+                        ajust = mefifierAjusterEighthsStrict(motifRythmique, tempDegres);
+                        
+                        if (attempts > 50) {
+                            ajust.degres[0] = (ajust.degres[0] % maxDegDisplay) + 1;
+                        }
+                        vSig = getVisualSignature(scaleKey, ajust.degres, ajust.rythmes, affichageMode);
+                        attempts++;
+                    } while (existingVisualSignatures.has(vSig));
+
+                    existingVisualSignatures.add(vSig);
+                    card._rythmes = ajust.rythmes;
+                    card._degres = ajust.degres;
+                } else {
+                    let vSig = getVisualSignature(card._scaleKey, card._degres, card._rythmes, affichageMode);
+                    let attempts = 0;
+                    while (existingVisualSignatures.has(vSig)) {
+                        card._degres[0] = (card._degres[0] % (GAMMES[card._scaleKey]?.length || 7)) + 1;
+                        vSig = getVisualSignature(card._scaleKey, card._degres, card._rythmes, affichageMode);
+                        attempts++;
+                    }
+                    existingVisualSignatures.add(vSig);
+                    if (!modeRythmiqueActif) {
                         card._rythmes = new Array(card._degres.length).fill('N');
                     }
                 }
@@ -650,43 +680,73 @@
             };
         }
 
-        function playPianoNote(freq, startTime, duration = 1.4) {
+        function playPianoNote(freq, startTime, duration = 2.5) {
             const ctx = getAudioContext();
-            const createdOscillators = [];
+            const createdNodes = [];
 
             const masterGain = ctx.createGain();
             masterGain.gain.setValueAtTime(0, startTime);
-            masterGain.gain.linearRampToValueAtTime(2.5, startTime + 0.015);
-            masterGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+            masterGain.gain.linearRampToValueAtTime(1.2, startTime + 0.008);
+            masterGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
 
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(freq * 4.5, startTime);
-            filter.frequency.exponentialRampToValueAtTime(freq * 0.9, startTime + 0.3);
+            filter.frequency.setValueAtTime(Math.min(freq * 8.0, 16000), startTime);
+            filter.frequency.exponentialRampToValueAtTime(Math.max(freq * 1.2, 200), startTime + duration * 0.7);
 
-            const harmonics = [
-                { mult: 1.0, gain: 0.75, type: 'triangle' },
-                { mult: 2.0, gain: 0.25, type: 'sine' },
-                { mult: 3.0, gain: 0.10, type: 'sine' },
-                { mult: 4.0, gain: 0.04, type: 'sine' }
+            const partials = [
+                { mult: 1.000, gain: 0.85, type: 'triangle' },
+                { mult: 2.001, gain: 0.35, type: 'sine' },
+                { mult: 3.003, gain: 0.20, type: 'sine' },
+                { mult: 4.006, gain: 0.12, type: 'sine' },
+                { mult: 5.010, gain: 0.07, type: 'sine' },
+                { mult: 6.015, gain: 0.04, type: 'sine' },
+                { mult: 8.030, gain: 0.02, type: 'sine' }
             ];
 
-            harmonics.forEach(h => {
+            partials.forEach(p => {
                 const osc = ctx.createOscillator();
-                const hGain = ctx.createGain();
+                const pGain = ctx.createGain();
 
-                osc.type = h.type;
-                osc.frequency.setValueAtTime(freq * h.mult, startTime);
-                hGain.gain.value = h.gain;
+                osc.type = p.type;
+                osc.frequency.setValueAtTime(freq * p.mult, startTime);
+                
+                pGain.gain.setValueAtTime(p.gain, startTime);
+                pGain.gain.exponentialRampToValueAtTime(0.0001, startTime + (duration * (1 / p.mult * 0.8 + 0.2)));
 
-                osc.connect(hGain);
-                hGain.connect(filter);
+                osc.connect(pGain);
+                pGain.connect(filter);
 
                 osc.start(startTime);
                 osc.stop(startTime + duration);
 
-                createdOscillators.push(osc);
+                createdNodes.push(osc);
+                createdNodes.push(pGain);
             });
+
+            const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.03, ctx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < noiseBuffer.length; i++) {
+                output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.005));
+            }
+            const noiseSource = ctx.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'bandpass';
+            noiseFilter.frequency.value = Math.min(freq * 3, 3000);
+            noiseFilter.Q.value = 1.0;
+
+            const noiseGain = ctx.createGain();
+            noiseGain.gain.setValueAtTime(0.15, startTime);
+            noiseGain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.03);
+
+            noiseSource.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(masterGain);
+
+            noiseSource.start(startTime);
+            createdNodes.push(noiseSource);
 
             filter.connect(masterGain);
             masterGain.connect(ctx.destination);
@@ -694,7 +754,10 @@
                 masterGain.connect(convolverNode);
             }
 
-            return createdOscillators;
+            createdNodes.push(masterGain);
+            createdNodes.push(filter);
+
+            return createdNodes;
         }
 
         function getFrequency(degre, card, index = 0, degres = []) {
@@ -714,8 +777,11 @@
             if (activePlayback.card) {
                 activePlayback.card.classList.remove('playing');
             }
-            activePlayback.oscillators.forEach(osc => {
-                try { osc.stop(); } catch (e) {}
+            activePlayback.oscillators.forEach(node => {
+                try { 
+                    if (node.stop) node.stop(); 
+                    if (node.disconnect) node.disconnect();
+                } catch (e) {}
             });
             activePlayback.timeouts.forEach(t => clearTimeout(t));
             activePlayback = { card: null, oscillators: [], timeouts: [] };
@@ -725,8 +791,8 @@
             stopCurrentPlayback();
             const ctx = getAudioContext();
             const freq = getFrequency(1, null);
-            const oscs = playPianoNote(freq, ctx.currentTime + 0.05, 1.5);
-            activePlayback.oscillators.push(...oscs);
+            const nodes = playPianoNote(freq, ctx.currentTime + 0.05, 2.5);
+            activePlayback.oscillators.push(...nodes);
         }
 
         function jouerArpegeI_III_V() {
@@ -738,8 +804,8 @@
 
             degres.forEach((degre, index) => {
                 const freq = getFrequency(degre, null);
-                const oscs = playPianoNote(freq, now + (index * stepDuration), 1.4);
-                activePlayback.oscillators.push(...oscs);
+                const nodes = playPianoNote(freq, now + (index * stepDuration), 2.5);
+                activePlayback.oscillators.push(...nodes);
             });
         }
 
@@ -789,9 +855,9 @@
 
                 if (!estSilence) {
                     const freq = getFrequency(degre, cardElement, index, degres);
-                    const oscs = playPianoNote(freq, now, Math.max(dureeNote * 1.8, 1.2));
-                    if (oscs) {
-                        activePlayback.oscillators.push(...oscs);
+                    const nodes = playPianoNote(freq, now, Math.max(dureeNote * 2.2, 2.0));
+                    if (nodes) {
+                        activePlayback.oscillators.push(...nodes);
                     }
                 }
 
@@ -799,7 +865,7 @@
                 dureeTotale += dureeNote;
             });
 
-            const totalDurationMs = (dureeTotale * 1000) + 300;
+            const totalDurationMs = (dureeTotale * 1000) + 500;
             const timeoutId = setTimeout(() => {
                 if (activePlayback.card === cardElement) {
                     stopCurrentPlayback();
@@ -1239,10 +1305,12 @@
                 ctx.textBaseline = 'middle';
                 ctx.fillStyle = '#000000';
 
+                const verticalDivisor = scaleLen;
+
                 degres.forEach((degre, i) => {
                     const stepX = widthUsable / Math.max(1, nNotes - 1);
                     const x = paddingX + (i * stepX);
-                    const y = (h - paddingBottom) - ((degre - 1) * (heightUsable / scaleLen));
+                    const y = (h - paddingBottom) - ((degre - 1) * (heightUsable / verticalDivisor));
 
                     let texte = '';
                     if (modeAffichage === 'notes') {
@@ -1250,7 +1318,12 @@
                     } else if (modeAffichage === 'lettres') {
                         texte = getNoteInfo(degre, card, true, i, degres).name;
                     } else {
-                        texte = toRoman(degre, scaleLen);
+                        const scaleKey = getCardScaleKey(card);
+                        if (scaleKey === 'chromatique') {
+                            texte = (((degre - 1) % scaleLen) + 1).toString();
+                        } else {
+                            texte = toRoman(degre, scaleLen);
+                        }
                     }
 
                     ctx.fillText(texte, x, y);
@@ -1343,11 +1416,12 @@
                         const paddingBottom = 25;
                         const widthUsable = w - (paddingX * 2);
                         const heightUsable = h - paddingTop - paddingBottom;
+                        const verticalDivisor = scaleLen;
 
                         card._degres.forEach((degre, i) => {
                             const stepX = widthUsable / Math.max(1, nNotes - 1);
                             const x = paddingX + (i * stepX);
-                            const y = (h - paddingBottom) - ((degre - 1) * (heightUsable / scaleLen));
+                            const y = (h - paddingBottom) - ((degre - 1) * (heightUsable / verticalDivisor));
 
                             if (Math.abs(clickX - x) < 18 && Math.abs(clickY - y) < 15) {
                                 noteIndexClic = i;
@@ -1361,8 +1435,8 @@
                         stopCurrentPlayback();
                         const ctx = getAudioContext();
                         const freq = getFrequency(card._degres[noteIndexClic], card, noteIndexClic, card._degres);
-                        const oscs = playPianoNote(freq, ctx.currentTime + 0.05, 1.2);
-                        activePlayback.oscillators.push(...oscs);
+                        const nodes = playPianoNote(freq, ctx.currentTime + 0.05, 2.0);
+                        activePlayback.oscillators.push(...nodes);
                     } else {
                         jouerMelodie(card._degres, card);
                     }
@@ -1382,6 +1456,9 @@
                 const cards = Array.from(grid.getElementsByClassName('domino-card'));
                 const currentIndex = cards.indexOf(card);
                 const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+                const affichageMode = document.getElementById('affichage').value;
+
+                let existingVisualSignatures = new Set(cards.filter(c => c !== card).map(c => getVisualSignature(c._scaleKey, c._degres, c._rythmes || [], affichageMode)));
 
                 const newScaleKey = assignScaleForDomino(styleVal, currentIndex);
                 const scale = GAMMES[newScaleKey] || GAMMES['maj'];
@@ -1390,36 +1467,48 @@
 
                 let newRythmes = [];
                 let newDegres = [];
+                let vSig = '';
+                let attempts = 0;
 
-                if (modeApprentissageActif) {
-                    if (currentIndex < DOMINOS_APPRENTISSAGE.length) {
-                        newDegres = [...DOMINOS_APPRENTISSAGE[currentIndex]];
-                        newRythmes = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS.find(c => c.length === newDegres.length) || new Array(newDegres.length).fill('N') : new Array(newDegres.length).fill('N');
-                    } else {
-                        let motifCell = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : new Array(4).fill('N');
-                        let tempDegres = genererMelodieParStyle(styleVal, currentIndex, maxDegDisplay, scaleLen, motifCell.length);
-                        let ajust = mefifierAjusterEighthsStrict(motifCell, tempDegres);
-                        newRythmes = ajust.rythmes;
-                        newDegres = ajust.degres;
-                    }
-                } else {
-                    if (currentIndex === 0) {
-                        for (let d = 1; d <= Math.max(3, scaleLen + 1); d++) newDegres.push(d);
-                        newRythmes = new Array(newDegres.length).fill('C');
-                    } else if (currentIndex === 1) {
-                        for (let d = scaleLen + 1; d >= 1; d--) newDegres.push(d);
-                        if (newDegres.length < 3) {
-                            newDegres = [scaleLen + 1, scaleLen, 1];
+                do {
+                    if (modeApprentissageActif) {
+                        if (currentIndex < DOMINOS_APPRENTISSAGE.length && attempts === 0) {
+                            newDegres = [...DOMINOS_APPRENTISSAGE[currentIndex]];
+                            newRythmes = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS.find(c => c.length === newDegres.length) || new Array(newDegres.length).fill('N') : new Array(newDegres.length).fill('N');
+                        } else {
+                            let motifCell = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : new Array(4).fill('N');
+                            let tempDegres = genererMelodieParStyle(styleVal, currentIndex, maxDegDisplay, scaleLen, motifCell.length);
+                            let ajust = mefifierAjusterEighthsStrict(motifCell, tempDegres);
+                            newRythmes = ajust.rythmes;
+                            newDegres = ajust.degres;
                         }
-                        newRythmes = new Array(newDegres.length).fill('C');
                     } else {
-                        let motifCell = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : new Array(4).fill('N');
-                        let tempDegres = genererMelodieParStyle(styleVal, currentIndex, maxDegDisplay, scaleLen, motifCell.length);
-                        let ajust = mefifierAjusterEighthsStrict(motifCell, tempDegres);
-                        newRythmes = ajust.rythmes;
-                        newDegres = ajust.degres;
+                        if (currentIndex === 0 && attempts === 0) {
+                            newDegres = [];
+                            for (let d = 1; d <= Math.max(3, scaleLen + 1); d++) newDegres.push(d);
+                            newRythmes = new Array(newDegres.length).fill('C');
+                        } else if (currentIndex === 1 && attempts === 0) {
+                            newDegres = [];
+                            for (let d = scaleLen + 1; d >= 1; d--) newDegres.push(d);
+                            if (newDegres.length < 3) {
+                                newDegres = [scaleLen + 1, scaleLen, 1];
+                            }
+                            newRythmes = new Array(newDegres.length).fill('C');
+                        } else {
+                            let motifCell = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : new Array(4).fill('N');
+                            let tempDegres = genererMelodieParStyle(styleVal, currentIndex, maxDegDisplay, scaleLen, motifCell.length);
+                            let ajust = mefifierAjusterEighthsStrict(motifCell, tempDegres);
+                            newRythmes = ajust.rythmes;
+                            newDegres = ajust.degres;
+                        }
                     }
-                }
+
+                    if (attempts > 50) {
+                        newDegres[0] = (newDegres[0] % maxDegDisplay) + 1;
+                    }
+                    vSig = getVisualSignature(newScaleKey, newDegres, newRythmes, affichageMode);
+                    attempts++;
+                } while (existingVisualSignatures.has(vSig));
 
                 card._scaleKey = newScaleKey;
                 card._degres = newDegres;
@@ -1454,12 +1543,26 @@
             const grid = document.getElementById('grid');
             grid.innerHTML = '';
             const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+            const affichageMode = document.getElementById('affichage').value;
+
+            let existingVisualSignatures = new Set();
 
             DOMINOS_APPRENTISSAGE.forEach((degres, i) => {
                 const scaleKey = assignScaleForDomino(styleVal, i);
                 const motifCompat = RHYTHM_CELLS_8_EIGHTHS.find(c => c.length === degres.length);
-                const rythmes = modeRythmiqueActif ? (motifCompat ? [...motifCompat] : new Array(degres.length).fill('N')) : new Array(degres.length).fill('N');
-                const card = creerDominoElement([...degres], i, scaleKey, rythmes);
+                let rythmes = modeRythmiqueActif ? (motifCompat ? [...motifCompat] : new Array(degres.length).fill('N')) : new Array(degres.length).fill('N');
+                let curDegres = [...degres];
+                let vSig = getVisualSignature(scaleKey, curDegres, rythmes, affichageMode);
+
+                let attempts = 0;
+                while (existingVisualSignatures.has(vSig)) {
+                    curDegres[0] = (curDegres[0] % (GAMMES[scaleKey]?.length || 7)) + 1;
+                    vSig = getVisualSignature(scaleKey, curDegres, rythmes, affichageMode);
+                    attempts++;
+                }
+
+                existingVisualSignatures.add(vSig);
+                const card = creerDominoElement(curDegres, grid.children.length, scaleKey, rythmes);
                 grid.appendChild(card);
             });
         }
@@ -1476,6 +1579,9 @@
             const grid = document.getElementById('grid');
             grid.innerHTML = '';
             const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+            const affichageMode = document.getElementById('affichage').value;
+
+            let existingVisualSignatures = new Set();
 
             for (let i = 0; i < total; i++) {
                 const scaleKey = assignScaleForDomino(styleVal, i);
@@ -1485,24 +1591,38 @@
 
                 let rythmes = [];
                 let degres = [];
+                let vSig = '';
+                let attempts = 0;
 
-                if (i === 0) {
-                    for (let d = 1; d <= Math.max(3, scaleLen + 1); d++) degres.push(d);
-                    rythmes = new Array(degres.length).fill('C');
-                } else if (i === 1) {
-                    for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
-                    if (degres.length < 3) {
-                        degres = [scaleLen + 1, scaleLen, 1];
+                do {
+                    if (!modeApprentissageActif) {
+                        if (i === 0 && attempts === 0) {
+                            degres = [];
+                            for (let d = 1; d <= Math.max(3, scaleLen + 1); d++) degres.push(d);
+                            rythmes = new Array(degres.length).fill('C');
+                        } else if (i === 1 && attempts === 0) {
+                            degres = [];
+                            for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
+                            if (degres.length < 3) {
+                                degres = [scaleLen + 1, scaleLen, 1];
+                            }
+                            rythmes = new Array(degres.length).fill('C');
+                        } else {
+                            let motifRythmique = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : ['N', 'N', 'N', 'N'];
+                            let tempDegres = genererMelodieParStyle(styleVal, i, maxDegDisplay, scaleLen, motifRythmique.length);
+                            let ajust = mefifierAjusterEighthsStrict(motifRythmique, tempDegres);
+                            rythmes = ajust.rythmes;
+                            degres = ajust.degres;
+                        }
                     }
-                    rythmes = new Array(degres.length).fill('C');
-                } else {
-                    let motifRythmique = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : ['N', 'N', 'N', 'N'];
-                    let tempDegres = genererMelodieParStyle(styleVal, i, maxDegDisplay, scaleLen, motifRythmique.length);
-                    let ajust = mefifierAjusterEighthsStrict(motifRythmique, tempDegres);
-                    rythmes = ajust.rythmes;
-                    degres = ajust.degres;
-                }
+                    if (attempts > 50) {
+                        degres[0] = (degres[0] % maxDegDisplay) + 1;
+                    }
+                    vSig = getVisualSignature(scaleKey, degres, rythmes, affichageMode);
+                    attempts++;
+                } while (existingVisualSignatures.has(vSig));
 
+                existingVisualSignatures.add(vSig);
                 const card = creerDominoElement(degres, i, scaleKey, rythmes);
                 grid.appendChild(card);
             }
@@ -1514,6 +1634,9 @@
             const cards = grid.getElementsByClassName('domino-card');
             const nextIndex = cards.length;
             const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+            const affichageMode = document.getElementById('affichage').value;
+
+            let existingVisualSignatures = new Set(Array.from(cards).map(c => getVisualSignature(c._scaleKey, c._degres, c._rythmes || [], affichageMode)));
 
             const scaleKey = assignScaleForDomino(styleVal, nextIndex);
             const scale = GAMMES[scaleKey] || GAMMES['maj'];
@@ -1522,27 +1645,22 @@
 
             let rythmes = [];
             let degres = [];
+            let vSig = '';
+            let attempts = 0;
 
-            if (modeApprentissageActif && nextIndex < DOMINOS_APPRENTISSAGE.length) {
-                degres = [...DOMINOS_APPRENTISSAGE[nextIndex]];
-                const motifCompat = RHYTHM_CELLS_8_EIGHTHS.find(c => c.length === degres.length);
-                rythmes = modeRythmiqueActif ? (motifCompat ? [...motifCompat] : new Array(degres.length).fill('N')) : new Array(degres.length).fill('N');
-            } else if (!modeApprentissageActif && nextIndex === 0) {
-                for (let d = 1; d <= Math.max(3, scaleLen + 1); d++) degres.push(d);
-                rythmes = new Array(degres.length).fill('C');
-            } else if (!modeApprentissageActif && nextIndex === 1) {
-                for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
-                if (degres.length < 3) {
-                    degres = [scaleLen + 1, scaleLen, 1];
-                }
-                rythmes = new Array(degres.length).fill('C');
-            } else {
+            do {
                 let motifRythmique = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : ['N', 'N', 'N', 'N'];
                 let tempDegres = genererMelodieParStyle(styleVal, nextIndex, maxDegDisplay, scaleLen, motifRythmique.length);
                 let ajust = mefifierAjusterEighthsStrict(motifRythmique, tempDegres);
                 rythmes = ajust.rythmes;
                 degres = ajust.degres;
-            }
+
+                if (attempts > 50) {
+                    degres[0] = (degres[0] % maxDegDisplay) + 1;
+                }
+                vSig = getVisualSignature(scaleKey, degres, rythmes, affichageMode);
+                attempts++;
+            } while (existingVisualSignatures.has(vSig));
 
             const card = creerDominoElement(degres, nextIndex, scaleKey, rythmes);
             grid.appendChild(card);
@@ -1571,38 +1689,56 @@
         function rafraichirGrille() {
             stopCurrentPlayback();
             const grid = document.getElementById('grid');
-            const cards = grid.getElementsByClassName('domino-card');
+            const cards = Array.from(grid.getElementsByClassName('domino-card'));
             const styleVal = document.getElementById('styleGamme').value || 'scale_maj';
+            const affichageMode = document.getElementById('affichage').value;
 
-            Array.from(cards).forEach((card, index) => {
+            let existingVisualSignatures = new Set();
+
+            cards.forEach((card, index) => {
                 const scaleKey = assignScaleForDomino(styleVal, index);
                 const scale = GAMMES[scaleKey] || GAMMES['maj'];
                 const scaleLen = scale.length;
                 const maxDegDisplay = scaleLen + 1;
 
-                let degres = card._degres;
-                let rythmes = card._rythmes;
+                let rythmes = [];
+                let degres = [];
+                let vSig = '';
+                let attempts = 0;
 
-                if (!modeApprentissageActif) {
-                    if (index === 0) {
-                        degres = [];
-                        for (let d = 1; d <= Math.max(3, scaleLen + 1); d++) degres.push(d);
-                        rythmes = new Array(degres.length).fill('C');
-                    } else if (index === 1) {
-                        degres = [];
-                        for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
-                        if (degres.length < 3) {
-                            degres = [scaleLen + 1, scaleLen, 1];
+                do {
+                    if (!modeApprentissageActif) {
+                        if (index === 0) {
+                            degres = [];
+                            for (let d = 1; d <= Math.max(3, scaleLen + 1); d++) degres.push(d);
+                            rythmes = new Array(degres.length).fill('C');
+                        } else if (index === 1) {
+                            degres = [];
+                            for (let d = scaleLen + 1; d >= 1; d--) degres.push(d);
+                            if (degres.length < 3) {
+                                degres = [scaleLen + 1, scaleLen, 1];
+                            }
+                            rythmes = new Array(degres.length).fill('C');
+                        } else {
+                            let motifRythmique = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : ['N', 'N', 'N', 'N'];
+                            let tempDegres = genererMelodieParStyle(styleVal, index, maxDegDisplay, scaleLen, motifRythmique.length);
+                            let ajust = mefifierAjusterEighthsStrict(motifRythmique, tempDegres);
+                            rythmes = ajust.rythmes;
+                            degres = ajust.degres;
                         }
-                        rythmes = new Array(degres.length).fill('C');
                     } else {
-                        let motifRythmique = modeRythmiqueActif ? RHYTHM_CELLS_8_EIGHTHS[getRandomInt(0, RHYTHM_CELLS_8_EIGHTHS.length - 1)] : ['N', 'N', 'N', 'N'];
-                        let tempDegres = genererMelodieParStyle(styleVal, index, maxDegDisplay, scaleLen, motifRythmique.length);
-                        let ajust = mefifierAjusterEighthsStrict(motifRythmique, tempDegres);
-                        rythmes = ajust.rythmes;
-                        degres = ajust.degres;
+                        degres = card._degres;
+                        rythmes = card._rythmes || new Array(degres.length).fill('N');
                     }
-                }
+
+                    if (attempts > 50) {
+                        degres[0] = (degres[0] % maxDegDisplay) + 1;
+                    }
+                    vSig = getVisualSignature(scaleKey, degres, rythmes, affichageMode);
+                    attempts++;
+                } while (existingVisualSignatures.has(vSig));
+
+                existingVisualSignatures.add(vSig);
                 card._scaleKey = scaleKey;
                 card._degres = degres;
                 card._rythmes = rythmes;
